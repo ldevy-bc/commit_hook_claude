@@ -94,6 +94,17 @@ check("default main_branch", g.normalize_config({})["main_branch"], "master")
 
 
 # ---------------------------------------------------------------------------
+# _version_token — extract the version VALUE from common file formats
+# ---------------------------------------------------------------------------
+check("token: pyproject",   g._version_token('version = "1.2.3"'), "1.2.3")
+check("token: package.json", g._version_token('  "version": "0.7.40",'), "0.7.40")
+check("token: dunder",      g._version_token('__version__ = "2.0.1rc1"'), "2.0.1rc1")
+check("token: uppercase",   g._version_token("VERSION = '3.4.5'"), "3.4.5")
+check("token: none in deps", g._version_token('fastapi = "0.68.1"\nrequests = "2.0"'), None)
+check("token: ignores subversion word", g._version_token("subversion notes here"), None)
+
+
+# ---------------------------------------------------------------------------
 if failures:
     print("FAILED (%d):\n" % len(failures))
     print("\n\n".join(failures))

@@ -1,68 +1,11 @@
 #!/usr/bin/env python3
 """PreToolUse hook: enforce a project's PR workflow.
 
-Centralizes the PR-workflow rules that would otherwise live as prose nobody
-remembers. Repo-specific tooling (lint command, version files, default
-branch) is declared per-repo in ``<repo-root>/.claude/pr.json`` so the
-generic flow here stays identical across every repo.
-
-Gates:
-  * ``git commit``   -> deny if the message carries an AI/Claude trailer.
-  * ``gh pr create`` -> deny if any of: AI trailer in title/body, lint
-                        fails, no version bump vs the default branch, or
-                        the branch is behind the default branch.
-  * ``git push``     -> only when the current branch has an OPEN PR, run the
-                        same full check as ``gh pr create`` (loud report +
-                        confirm prompts; deny on failure) so updates to an
-                        open PR can't reintroduce a stale branch or version
-                        clash after the default branch moves, and the
-                        confirm prompts fire on every push. Pushes to a branch
-                        with no open PR do nothing. Fails OPEN if PR state
-                        can't be determined (gh missing / offline / unauthed).
-
-A repo with no ``.claude/pr.json`` is HARD-BLOCKED (deny) so every repo
-must declare its tools before a commit/PR can go out.
-
-pr.json schema (friendly, flat — a check is ON because its config is
-present; omit a key to turn that check off):
-  {
-    "main_branch": "master",                       # default "master"
-    "block_ai_trailer": true,                      # default true
-    "refresh_branch": true,                        # default true (deny if
-                                                   # behind main_branch)
-    "require_version_bump": ["pyproject.toml"],    # files that must change vs
-                                                   # main; omit/[] = off
-    "lint": ".venv/bin/ruff check .",              # lint command; omit/null =
-                                                   # off (venv-relative — hook
-                                                   # has no venv on PATH)
-    "confirm": ["Bump dep X if needed?"],          # judgment prompts, hard-
-                                                   # gated (PR_CONFIRM_ACK=1)
-    "bump_hint": "Run the bump-X skill.",          # optional fix pointer,
-                                                   # printed in the report
-    "ask_on_pass": true                            # default true. On a clean,
-                                                   # acknowledged run: true ->
-                                                   # ask the human; false ->
-                                                   # agent proceeds silently.
-                                                   # Failures and unanswered
-                                                   # confirms always deny.
-  }
-
-Legacy keys are still honoured (so existing repos keep working): a nested
-``"checks": {ai_trailer|branch_stale|version_bump|lint: false}`` toggle map,
-``"version_files"`` (old name for ``require_version_bump``), and ``"verbose"``
-(old name for ``ask_on_pass``). See ``normalize_config``.
-
-Every ``gh pr create`` / open-PR ``git push`` prints the status of EVERY
-step (PASS / OFF / SKIP) so nothing is enforced or skipped silently. A failed
-step hard-denies with the full report. Any ``confirm`` prompts (judgment
-calls like a dependency bump) also hard-deny until the SAME command is re-run
-with a ``PR_CONFIRM_ACK=1`` prefix — a soft ``ask`` would be cleared by the
-session's auto-accept without the question ever being answered. When all
-steps pass and confirms are acknowledged, the run is surfaced as an ``ask``
-(or, with ``"ask_on_pass": false``, allowed silently so the agent proceeds).
-
-The hook fails OPEN on its own internal errors (so a hook bug never bricks
-git) but fails CLOSED on the intentional checks above.
+Gates ``git commit`` / ``git push`` (to an open PR) / ``gh pr create`` against
+the per-repo rules in ``<repo-root>/.claude/pr.json``, returning allow / ask /
+deny. Fails OPEN on internal errors and unreachable lookups; fails CLOSED on
+the intentional checks. Config schema, behaviour, and design notes live in the
+project README — ``normalize_config`` is the single source for the keys.
 """
 import json
 import os
@@ -348,6 +291,37 @@ def normalize_config(cfg):
 
 PASS, FAIL, OFF, SKIP = "✔", "✗", "⊘", "⚠"
 
+_VERSION_RE = re.compile(
+    r'(?:^|[^\w])_*version_*["\']?\s*[=:]\s*["\']?v?(\d+\.\d+[\w.\-]*)', re.I | re.M)
+
+
+def _version_token(text):
+    """First version value in a file (pyproject ``version =``, package.json
+    ``"version":``, python ``__version__ =``). None if no version line."""
+    m = _VERSION_RE.search(text)
+    return m.group(1) if m else None
+
+
+def version_bumped(root, main, vfiles):
+    """Compare the version VALUE (not just the file) across origin/main..HEAD.
+
+    Returns ``(bumped, readable)``: ``bumped`` lists ``"file old->new"`` for
+    files whose version token actually changed; ``readable`` is True if at
+    least one file was readable on both sides. An unrelated edit to a version
+    file (e.g. a dependency change) does NOT count — only a changed version.
+    """
+    bumped, readable = [], False
+    for vf in vfiles:
+        old = git(root, "show", "origin/{}:{}".format(main, vf))
+        new = git(root, "show", "HEAD:{}".format(vf))
+        if old.returncode != 0 or new.returncode != 0:
+            continue
+        readable = True
+        ov, nv = _version_token(old.stdout), _version_token(new.stdout)
+        if ov and nv and ov != nv:
+            bumped.append("{} {}->{}".format(vf, ov, nv))
+    return bumped, readable
+
 
 def check_pr(root, cfg, tokens, workdir):
     """Run every configured check, accumulate a per-step report, and ALWAYS
@@ -390,17 +364,16 @@ def check_pr(root, cfg, tokens, workdir):
     else:
         report.append((OFF, "branch-stale", "OFF (not configured)"))
 
-    # version-bump
+    # version-bump — the version VALUE must change, not merely the file
     if cfg["version_files"]:
-        vfiles = cfg["version_files"]
-        diff = git(root, "diff", "--name-only", "origin/{}...HEAD".format(main), "--", *vfiles)
-        if diff.returncode != 0:
-            report.append((SKIP, "version-bump", "SKIP — can't diff vs origin/{}".format(main)))
-        elif not diff.stdout.strip():
-            report.append((FAIL, "version-bump", "none of {} changed vs origin/{} — bump version".format(vfiles, main)))
-            failures.append("version-bump")
+        bumped, readable = version_bumped(root, main, cfg["version_files"])
+        if not readable:
+            report.append((SKIP, "version-bump", "SKIP — can't read version files vs origin/{}".format(main)))
+        elif bumped:
+            report.append((PASS, "version-bump", "bumped ({})".format(", ".join(bumped))))
         else:
-            report.append((PASS, "version-bump", "bumped ({})".format(", ".join(diff.stdout.split()))))
+            report.append((FAIL, "version-bump", "version unchanged in {} vs origin/{} — bump the value, not just the file".format(cfg["version_files"], main)))
+            failures.append("version-bump")
     else:
         report.append((OFF, "version-bump", "OFF (not configured)"))
 

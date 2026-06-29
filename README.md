@@ -18,7 +18,7 @@ The rules live in one small file per repo (`.claude/pr.json`) — the hook itsel
 
 - **no AI trailer** — rejects `Co-Authored-By: Claude` / "Generated with Claude" / 🤖 in commit & PR messages
 - **fresh branch** — denies a push when your branch is behind the default branch
-- **version bumped** — denies if none of your declared version files changed
+- **version bumped** — denies unless the *version value* in a declared file actually changed (a stray edit to the file — e.g. a dependency tweak — doesn't count)
 - **lint clean** — runs your lint command and denies on failure
 - **confirm gates** — hard-stops on judgment calls (e.g. "does this need a dependency bump?") until they're explicitly acknowledged
 
@@ -149,7 +149,7 @@ On a deny the agent reads this, runs the named command, and re-issues the push �
 | `main_branch` | string | Branch to compare against. Default `master`. |
 | `block_ai_trailer` | bool | Reject AI-credit trailers. On by default; set `false` to allow. |
 | `refresh_branch` | bool | Require the branch be current with main. On by default. |
-| `require_version_bump` | string[] | List version files → enforced. Omit / `[]` → off. |
+| `require_version_bump` | string[] | List version files → the version *value* in one must change vs main. Omit / `[]` → off. |
 | `lint` | string | Lint command → run it. Omit / `null` → off. |
 | `confirm` | string[] | Judgment prompts, hard-gated by `PR_CONFIRM_ACK=1`. |
 | `bump_hint` | string | Optional pointer to the fix, printed on a deny. |
