@@ -46,7 +46,13 @@ flowchart TD
     H -->|no| I{ask_on_pass?}
     I -->|true| ASK([❓ ASK])
     I -->|false| OK4([✅ ALLOW])
+
+    D1 -. fix message & re-run .-> A
+    D2 -. fix & re-run .-> A
+    D3 -. acknowledge & re-run .-> A
 ```
+
+Every **DENY** is a loop, not a wall: the agent reads the report, fixes the issue (or runs the named skill), and re-issues the command — the hook re-checks the new state.
 
 ---
 
@@ -88,9 +94,9 @@ One principle: **a check is on because its config is present.** No toggle map, n
   "lint": "pnpm lint",                         // a command → run it; omit → skip
   "require_version_bump": ["package.json"],    // files that must change vs main
   "confirm": [                                 // judgment prompts (hard-gated)
-    "Does this PR need a newer shared library build? If so run /bump-exchanges-version first."
+    "Does this PR need a newer shared library build? If so run /your-fix-skill first."
   ],
-  "bump_hint": "Run /bump-exchanges-version to fix the version, then retry.", // shown on a deny
+  "bump_hint": "Run /your-fix-skill to fix the version, then retry.", // shown on a deny
   "ask_on_pass": true                          // clean run: ask (true) or proceed (false)
 }
 ```
@@ -116,7 +122,7 @@ So `{ }` alone already blocks AI trailers and stale branches against `master`. I
 `confirm` prompts and `bump_hint` are plain text shown to the agent on a deny — so **name a skill or slash command** in them and the agent knows exactly how to resolve the gate:
 
 ```json
-"bump_hint": "Run /bump-exchanges-version to bump the pins, then retry."
+"bump_hint": "Run /your-fix-skill to bump the pins, then retry."
 ```
 
 On a deny the agent reads this, runs the named command, and re-issues the push — see below.

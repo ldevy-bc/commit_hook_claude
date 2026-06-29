@@ -3,8 +3,8 @@
   "lint": "pnpm lint",
   "require_version_bump": ["package.json"],
   "confirm": [
-    "Does this PR need a newer shared library build? If so run /bump-exchanges-version first."
+    "Does this PR need a newer shared library build? If so run /your-fix-skill first."
   ],
-  "bump_hint": "Run /bump-exchanges-version to fix the version, then retry.",
+  "bump_hint": "Run /your-fix-skill to fix the version, then retry.",
   "ask_on_pass": true
 }
