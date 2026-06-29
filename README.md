@@ -1,8 +1,8 @@
 # pr-guard
 
-> A [Claude Code](https://claude.com/claude-code) **PreToolUse hook** that stops a bad `git commit`, `git push`, or `gh pr create` before it leaves your machine — and tells you exactly how to fix it.
+> A [Claude Code](https://claude.com/claude-code) **PreToolUse hook** that stops a bad commit, push, or PR before it ships — and tells the agent exactly how to fix it.
 
-It runs as a subprocess on every git command the agent (or you) runs, checks it against your repo's rules, and returns one of three verdicts:
+It runs as a subprocess on every Bash command Claude issues, acts on three — `git commit`, `git push`, `gh pr create` — checks them against your repo's rules, and returns one of three verdicts:
 
 | | |
 |---|---|
@@ -17,7 +17,7 @@ The rules live in one small file per repo (`.claude/pr.json`) — the hook itsel
 ## What it checks
 
 - **no AI trailer** — rejects `Co-Authored-By: Claude` / "Generated with Claude" / 🤖 in commit & PR messages
-- **fresh branch** — denies a push when your branch is behind the default branch
+- **fresh branch** — denies when your branch is behind the default branch
 - **version bumped** — denies unless the *version value* in a declared file actually changed (a stray edit to the file — e.g. a dependency tweak — doesn't count)
 - **lint clean** — runs your lint command and denies on failure
 - **confirm gates** — hard-stops on judgment calls (e.g. "does this need a dependency bump?") until they're explicitly acknowledged
@@ -95,19 +95,19 @@ cp hooks/pr-guard.py ~/.claude/hooks/pr-guard.py
 
 **3. Add a `.claude/pr.json` to each repo you want guarded** (see below).
 
-> A repo with **no** `.claude/pr.json` is denied — every repo must declare its rules before code goes out. Don't want to guard a repo? It won't have the file and you simply won't commit through Claude there… or give it a minimal config (see `examples/docs-or-scripts.json`).
+> A repo with **no** `.claude/pr.json` has its commits/PRs **denied** — every guarded repo must declare its rules first. For a repo you barely want to gate, drop in a minimal config (see `examples/docs-or-scripts.json`).
 
 ---
 
 ## Configure · `.claude/pr.json`
 
-One principle: **a check is on because its config is present.** No toggle map, no hidden defaults.
+One principle: **a check is on because its config is present** — no separate toggle map. A few keys still have defaults (listed just below).
 
 ```jsonc
 {
   "main_branch": "main",                       // optional, default "master"
   "lint": "pnpm lint",                         // a command → run it; omit → skip
-  "require_version_bump": ["package.json"],    // files that must change vs main
+  "require_version_bump": ["package.json"],    // version value must change vs main
   "confirm": [                                 // judgment prompts (hard-gated)
     "Does this PR need a newer shared library build? If so run /your-fix-skill first."
   ],
@@ -132,16 +132,6 @@ The hook is useful with an almost-empty config because sensible defaults apply:
 
 So `{ }` alone already blocks AI trailers and stale branches against `master`. If your default branch is `main`, set `"main_branch": "main"` — that's the one default people most often need to override.
 
-### Point the fix at a skill or command
-
-`confirm` prompts and `bump_hint` are plain text shown to the agent on a deny — so **name a skill or slash command** in them and the agent knows exactly how to resolve the gate:
-
-```json
-"bump_hint": "Run /your-fix-skill to bump the pins, then retry."
-```
-
-On a deny the agent reads this, runs the named command, and re-issues the push — see below.
-
 ### Every key
 
 | Key | Type | What it does |
@@ -151,11 +141,11 @@ On a deny the agent reads this, runs the named command, and re-issues the push �
 | `refresh_branch` | bool | Require the branch be current with main. On by default. |
 | `require_version_bump` | string[] | List version files → the version *value* in one must change vs main. Omit / `[]` → off. |
 | `lint` | string | Lint command → run it. Omit / `null` → off. |
-| `confirm` | string[] | Judgment prompts, hard-gated by `PR_CONFIRM_ACK=1`. |
-| `bump_hint` | string | Optional pointer to the fix, printed on a deny. |
+| `confirm` | string[] | Judgment prompts, hard-gated by `PR_CONFIRM_ACK=1`. Name a skill/command (e.g. `/your-fix-skill`) so the agent knows how to resolve it. |
+| `bump_hint` | string | Optional pointer to the fix, printed on a deny — e.g. `"Run /your-fix-skill, then retry."` |
 | `ask_on_pass` | bool | On a clean, acknowledged run: ask the human (`true`) or let the agent proceed (`false`). Default `true`. |
 
-See [`examples/`](examples/) for ready-to-copy configs (Python service, frontend, docs/scripts).
+See [`examples/`](examples/) for ready-to-copy configs.
 
 ---
 
@@ -174,8 +164,6 @@ PR_CONFIRM_ACK=1 git push origin my-branch
 ```
 
 **`ask_on_pass`** — on a run where everything passed and confirms are acknowledged, choose to pause for a human (`true`) or let the agent proceed silently (`false`). Failures and unanswered confirms always deny, regardless.
-
-**Denies are actionable, not dead ends.** On a deny the agent receives the full report (including `bump_hint`), fixes the issue — rebase, bump the version, run the named skill, clear the lint — and re-runs the same command. The hook re-checks against the new state and lets it through once clean. The block is a loop, not a wall.
 
 ---
 
