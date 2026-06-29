@@ -1,0 +1,5 @@
+{
+  "main_branch": "main",
+  "lint": "pnpm lint",
+  "require_version_bump": ["package.json"]
+}

@@ -1,0 +1,5 @@
+{
+  "main_branch": "master",
+  "lint": ".venv/bin/ruff check .",
+  "require_version_bump": ["pyproject.toml"]
+}

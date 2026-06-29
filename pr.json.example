@@ -1,0 +1,10 @@
+{
+  "main_branch": "main",
+  "lint": "pnpm lint",
+  "require_version_bump": ["package.json"],
+  "confirm": [
+    "Does this PR need a newer shared library build? If so, bump it first."
+  ],
+  "bump_hint": "Run the bump-version script.",
+  "ask_on_pass": true
+}
