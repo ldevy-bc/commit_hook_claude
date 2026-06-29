@@ -88,12 +88,38 @@ One principle: **a check is on because its config is present.** No toggle map, n
   "lint": "pnpm lint",                         // a command → run it; omit → skip
   "require_version_bump": ["package.json"],    // files that must change vs main
   "confirm": [                                 // judgment prompts (hard-gated)
-    "Does this PR need a newer shared library build?"
+    "Does this PR need a newer shared library build? If so run /bump-exchanges-version first."
   ],
-  "bump_hint": "Run the bump-version script.", // printed when a check denies
+  "bump_hint": "Run /bump-exchanges-version to fix the version, then retry.", // shown on a deny
   "ask_on_pass": true                          // clean run: ask (true) or proceed (false)
 }
 ```
+
+### Defaults — what you get if you omit a key
+
+The hook is useful with an almost-empty config because sensible defaults apply:
+
+| Key | Default if omitted |
+|-----|--------------------|
+| `main_branch` | `master` |
+| `block_ai_trailer` | **on** |
+| `refresh_branch` | **on** |
+| `ask_on_pass` | **ask** |
+| `require_version_bump` | off (no files) |
+| `lint` | off (no command) |
+| `confirm` | none |
+
+So `{ }` alone already blocks AI trailers and stale branches against `master`. If your default branch is `main`, set `"main_branch": "main"` — that's the one default people most often need to override.
+
+### Point the fix at a skill or command
+
+`confirm` prompts and `bump_hint` are plain text shown to the agent on a deny — so **name a skill or slash command** in them and the agent knows exactly how to resolve the gate:
+
+```json
+"bump_hint": "Run /bump-exchanges-version to bump the pins, then retry."
+```
+
+On a deny the agent reads this, runs the named command, and re-issues the push — see below.
 
 ### Every key
 
@@ -127,6 +153,8 @@ PR_CONFIRM_ACK=1 git push origin my-branch
 ```
 
 **`ask_on_pass`** — on a run where everything passed and confirms are acknowledged, choose to pause for a human (`true`) or let the agent proceed silently (`false`). Failures and unanswered confirms always deny, regardless.
+
+**Denies are actionable, not dead ends.** On a deny the agent receives the full report (including `bump_hint`), fixes the issue — rebase, bump the version, run the named skill, clear the lint — and re-runs the same command. The hook re-checks against the new state and lets it through once clean. The block is a loop, not a wall.
 
 ---
 
