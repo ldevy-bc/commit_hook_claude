@@ -56,13 +56,28 @@ Every **DENY** is a loop, not a wall: the agent reads the report, fixes the issu
 
 ---
 
+## Repository layout
+
+```
+hooks/pr-guard.py        the hook — copies straight to ~/.claude/hooks/
+examples/                ready-to-copy pr.json configs
+  pr.json                  full example with every key
+  python-service.json      lint + version bump (ruff / pyproject)
+  frontend.json            lint + version bump (pnpm / package.json)
+  docs-or-scripts.json     minimal (AI-trailer only)
+tests/test_pr_guard.py   dependency-free tests for the core logic
+.claude/pr.json          this repo's own config (so it guards itself)
+```
+
+The repo mirrors where things land: `hooks/` → `~/.claude/hooks/`, and you copy one file from `examples/` into your repo's `.claude/`.
+
 ## Install
 
 **1. Drop the hook in your Claude config:**
 
 ```bash
 mkdir -p ~/.claude/hooks
-cp pr-guard.py ~/.claude/hooks/pr-guard.py
+cp hooks/pr-guard.py ~/.claude/hooks/pr-guard.py
 ```
 
 **2. Register it once in `~/.claude/settings.json`:**
@@ -184,7 +199,7 @@ Design principles baked in:
 Pure-function tests for the command parser and config normalizer, no dependencies:
 
 ```bash
-python3 test_pr_guard.py
+python3 tests/test_pr_guard.py
 ```
 
 ---

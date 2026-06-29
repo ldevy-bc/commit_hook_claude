@@ -3,14 +3,15 @@
 
 Covers the two functions that decide everything: command recognition
 (``classify_command``) and config normalization (``normalize_config``).
-Run with: ``python3 test_pr_guard.py`` (exit code 0 = all passed).
+Run with: ``python3 tests/test_pr_guard.py`` (exit code 0 = all passed).
 """
 import importlib.util
 import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-spec = importlib.util.spec_from_file_location("pr_guard", os.path.join(HERE, "pr-guard.py"))
+HOOK = os.path.join(HERE, "..", "hooks", "pr-guard.py")
+spec = importlib.util.spec_from_file_location("pr_guard", HOOK)
 g = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(g)
 
